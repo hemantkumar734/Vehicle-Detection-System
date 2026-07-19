@@ -10,57 +10,62 @@ A robust, weather-aware vehicle detection system built for the chaotic reality o
 
 Standard object detection models are usually trained and benchmarked on clean, structured datasets from Europe, the US, or China — well-marked lanes, predictable traffic, and clear weather. None of that describes an Indian monsoon street: auto-rickshaws weaving between buses, waterlogged roads acting like mirrors, rain streaks blurring object boundaries, and vehicle spray fogging up entire lanes.
 
-This project builds a detection pipeline specifically designed for that environment. It combines a custom-annotated, real-world rainy-weather dataset with a **self-built image enhancement pipeline** and a **SAHI-based multi-inference strategy** on top of YOLOv8x — pushing detection accuracy up significantly compared to a standard baseline model, especially for small and partially occluded vehicles.
+This project builds a detection pipeline specifically designed for that environment. It combines a custom-annotated, real-world rainy-weather dataset with a **self-built adaptive image enhancement pipeline** on top of a fine-tuned YOLOv8x model — improving detection recovery on degraded (rain/fog/low-light) images with no observed regressions across evaluated test scenes.
+
+> **A note on scope:** The full proposed methodology, including a SAHI-based 4-quadrant tiled-inference strategy and IoM (Intersection over Minimum) duplicate suppression, is described in detail in the accompanying conference paper. This repository contains the components that were implemented and used to generate the paper's enhancement and training results: the adaptive enhancement pipeline, the YOLOv8x training pipeline, the dynamic per-class confidence filter, and a clean-vs-rain-vs-enhanced evaluation dashboard. The tiled-inference module is documented in the paper as proposed/future-facing architecture and is not included as standalone runnable code here.
 
 ---
 
 ## 🎯 Problem Statement
 
 Rainy weather degrades vehicle detection accuracy through:
-- **Rain streaks** — thin, high-frequency visual noise that obscures object edges
-- **Water spray** from passing vehicles, creating localized fog
-- **Wet-road reflections** that produce false positives (ghost objects) and false negatives (real vehicles blending into glare)
-- **Low contrast and reduced visibility** from overcast skies and ambient moisture
+- **Rain streaks and noise** — high-frequency visual interference that obscures object edges
+- **Low light / overcast conditions** — reduced contrast and visibility
+- **Fog and haze** — washed-out colors and contrast, especially at range
+- **Blur** — from rain-soaked lenses or camera shake
 - **Highly heterogeneous traffic** — cars, auto-rickshaws, two-wheelers, buses, and trucks sharing the same unstructured lanes with no consistent discipline
 
 Existing global datasets (Cityscapes, BDD100K, DAWN, ACDC) don't capture this combination of adverse weather *and* Indian road chaos — which is the gap this project addresses with a purpose-built dataset and pipeline.
 
 ---
 
-## 🧩 Key Contributions
+## 🧩 Key Components (implemented in this repo)
 
 ### 1. Custom Real-World Rainy Dataset
 - ~3,000 images collected from mobile cameras, CCTV, and dashcams across Indian urban roads, highways, and congested intersections during actual monsoon conditions
 - Filtered down to **1,800 high-quality images** after removing blur, occlusion, and redundant samples
-- Manually annotated in **Label Studio** (no AI-assisted labeling) across **6 vehicle classes**: Car, Bus, Truck, Auto-Rickshaw, Two-Wheeler, Mini Truck
-- ~10,000 total labeled vehicle instances
-- Verified through a custom Python validation script checking bounding box integrity, class IDs, and label consistency, with an iterative annotation feedback loop
+- Manually annotated in **Label Studio** (no AI-assisted labeling) across **6 vehicle classes**: Car, Bus, Heavy Vehicle, Auto-Rickshaw, Two-Wheeler, Mini Truck
 - Split 70:20:10 (train:val:test)
 
-### 2. Self Image Enhancement Pipeline
-A 3-stage sequential enhancement pipeline applied before detection, designed to preserve object structure (not just generic visual quality):
+### 2. Adaptive Image Enhancement Pipeline
+Rather than applying a fixed sequence of filters to every image, the pipeline first **diagnoses** what's actually wrong with a given frame, then applies only the fixes needed:
 
-```
-Rain-degraded image → Bilateral Denoising → Gamma Correction → CLAHE → Enhanced image → YOLOv8x
-```
+- **Degradation profiling** — measures Laplacian variance (blur), mean brightness (low light), dark-channel mean (fog), and noise level to detect which condition(s) apply
+- **Low-light correction** — gamma lift + CLAHE (on the LAB L-channel) to recover shadow detail without blowing out headlights/highlights
+- **Rain/noise removal** — Non-Local Means denoising, tuned to preserve vehicle edges while removing rain streaks and grain
+- **Fog removal** — Dark Channel Prior dehazing to recover contrast in hazy/foggy frames
+- **Blur correction** — unsharp masking to recover crisp edges on rain-blurred frames
 
-- **Bilateral Denoising** — removes rain-induced noise while preserving object edges (unlike standard smoothing, which blurs vehicle contours)
-- **Gamma Correction** — non-linear intensity adjustment to recover detail in dark, low-visibility regions common in overcast rain
-- **CLAHE (Contrast Limited Adaptive Histogram Equalization)** — localized contrast enhancement to separate vehicles from hazy/water-sprayed backgrounds
+This adaptive, condition-based approach means a clean image passes through untouched, while a degraded image only gets the specific corrections it needs — avoiding the artifacts that come from over-processing already-good images.
 
-### 3. SAHI-Based 4-Quadrant Inference Strategy
-To recover small and distant vehicles that get lost at standard 640×640 inference resolution:
-- **Global Baseline Scan** — one full-image pass to catch clearly visible vehicles
-- **4-Quadrant Slicing** — image split into top-left, top-right, bottom-left, bottom-right; each processed independently at higher effective resolution (1+4 inference architecture)
-- **IoM (Intersection over Minimum) Duplicate Suppression** — resolves duplicate detections between global and quadrant passes more reliably than standard IoU, which fails when a loose global box overlaps a tighter local box
-- **Dynamic Per-Class Confidence Thresholds** — lower thresholds for small/faint classes like two-wheelers (to boost recall), higher thresholds for large vehicles like buses/heavy vehicles (to reduce false positives)
+### 3. Dynamic Per-Class Confidence Filtering
+Detection confidence thresholds are adjusted per vehicle class rather than using one global cutoff:
+- **Two-wheelers/bikes:** lower threshold (≥0.15) to aggressively capture small, faint profiles
+- **Heavy vehicles/buses/trucks:** higher threshold (≥0.45) to reduce false positives from overlapping large objects
+- **Standard vehicles (cars, etc.):** baseline threshold (≥0.25)
+
+### 4. Clean vs. Rain vs. Enhanced Evaluation Pipeline
+An end-to-end evaluation script that:
+- Runs the trained YOLOv8x model on paired **clean**, **rain-degraded**, and **enhanced** versions of the same scenes
+- Counts detected vehicles per class in each condition
+- Builds a comparison CSV and generates bar/line charts plus a summary dashboard, visually and numerically demonstrating the enhancement pipeline's impact on detection recovery
 
 ---
 
 ## 📊 Results
 
 **Model:** YOLOv8x, transfer-learned from COCO pre-trained weights
-**Training:** 120 epochs, AdamW optimizer, batch size 4, input size 640×640
+**Training:** 120 epochs, AdamW optimizer, cosine LR decay, batch size 4, input size 640×640
 
 | Metric | Value |
 |---|---|
@@ -80,23 +85,28 @@ To recover small and distant vehicles that get lost at standard 640×640 inferen
 | Heavy Vehicle | 0.881 |
 | Two-Wheeler | 0.861 |
 
-**Enhancement impact:** Across all evaluated rainy test images, the enhancement pipeline improved recovered detections in *every single case* — no performance regressions observed. Example: one test image went from 37 → 49 detected vehicles after enhancement (+12), another from 6 → 10 (+4) even in a low-yield scene.
+**Enhancement impact:** Across evaluated rainy test images, the enhancement pipeline improved recovered detections in every evaluated case, with no observed regressions. Example: one test image went from 37 → 49 detected vehicles after enhancement (+12), another from 6 → 10 (+4) even in a low-yield scene.
 
 **Training/validation loss** converged smoothly across 120 epochs with no significant train-val divergence, indicating the model generalized well without overfitting.
 
-*(See `/output` folder for training curves, confusion matrix, and enhancement comparison visuals.)*
+![Training and validation curves](output/training_results.jpeg)
+
+**Confusion matrix (normalized):**
+
+![Confusion matrix](output/confusion_matrix.jpeg)
+
+*(See `/output` folder for full-resolution versions of these images, plus `args.yaml` — the auto-generated Ultralytics training configuration log confirming the exact hyperparameters used for this run.)*
 
 ---
 
 ## 🛠️ Tech Stack
 
 - **Detection Model:** YOLOv8x (Ultralytics)
-- **Enhancement:** OpenCV (Bilateral Filter, Gamma Correction, CLAHE)
-- **Inference Strategy:** SAHI (Slicing Aided Hyper Inference), custom IoM suppression logic
+- **Enhancement:** OpenCV, scikit-image (CLAHE, Dark Channel Prior dehazing, Non-Local Means denoising, gamma correction, unsharp masking)
+- **Evaluation:** Pandas, Matplotlib (comparison dashboard, CSV export)
 - **Annotation:** Label Studio
 - **Core Libraries:** Python, OpenCV, NumPy, Pandas, PyTorch
-- **Validation:** Custom Python dataset-integrity scripts
-- **Performance:** GPU acceleration (CUDA)
+- **Performance:** GPU acceleration (CUDA) where available
 
 ---
 
@@ -104,10 +114,13 @@ To recover small and distant vehicles that get lost at standard 640×640 inferen
 
 ```
 Vehicle-Detection-System/
-├── vehicle_detection.py    # Main detection script
-├── requirements.txt        # Dependencies
-├── test_images/            # Sample test images
-└── output/                 # training_results.png, confusion_matrix.png, enhancement_comparison.png
+├── vehicle_detection.py     # Basic single-image YOLOv8x inference script
+├── enhanced_pipeline.py     # Adaptive image enhancement pipeline (blur/low-light/fog/rain)
+├── final_pipeline.py        # Clean vs. rain vs. enhanced evaluation + dashboard generator
+├── training.py               # YOLOv8x training configuration and script
+├── requirements.txt          # Dependencies
+├── test_images/              # Sample test images
+└── output/                   # training_results.jpeg, confusion_matrix.jpeg, args.yaml
 ```
 
 ---
@@ -122,16 +135,20 @@ Vehicle-Detection-System/
    ```
    pip install -r requirements.txt
    ```
-3. Run detection
+3. Run basic detection
    ```
    python vehicle_detection.py
+   ```
+4. Run the clean vs. rain vs. enhanced comparison pipeline (requires `clean/`, `rain/`, and `model/best.pt` set up as described in `final_pipeline.py`)
+   ```
+   python final_pipeline.py
    ```
 
 ---
 
 ## 🔭 Why This Matters
 
-India recorded ~4.6 lakh road accidents in 2022 (Ministry of Road Transport and Highways), with adverse weather a significant contributing factor. Reliable vehicle detection under rain isn't just a computer vision benchmark — it's a real safety gap for intelligent transportation systems, ADAS, and traffic monitoring deployed in Indian conditions. This project is a step toward detection systems that actually hold up in the environment they'll be deployed in, rather than just the one they were trained on.
+India recorded a significant number of road accidents in recent years, with adverse weather a contributing factor. Reliable vehicle detection under rain isn't just a computer vision benchmark — it's a real gap for intelligent transportation systems, ADAS, and traffic monitoring deployed in Indian conditions. This project is a step toward detection systems that hold up in the environment they'll be deployed in, rather than just the one they were trained on.
 
 ---
 
