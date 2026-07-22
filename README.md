@@ -119,7 +119,7 @@ An end-to-end evaluation script that:
 
 As noted above, the SAHI-based 4-quadrant tiled inference and IoM duplicate suppression described in the paper are not included as standalone code in this repository. The image below is a screenshot from an early prototype used to visually validate the concept — splitting a frame into 4 quadrants and running detection on each slice to recover small/distant vehicles that a single full-frame pass misses.
 
-![SAHI concept demonstration](demo/sahi_concept_demo.jpeg)
+![SAHI concept demonstration](demo/sahi_concept_demo.png)
 
 *(Illustrative only — this demonstrates the concept was tested; the prototype's source code is not part of this repository.)*
 
@@ -149,7 +149,7 @@ Vehicle-Detection-System/
 ├── output/                   # training_results.jpeg, confusion_matrix.jpeg, args.yaml,
 │                              # detection_comparison.png, detection_efficacy_comparison.png,
 │                              # gain_trend_analysis.png, vehicle_class_distribution.png
-└── demo/                     # sahi_concept_demo.jpeg (illustrative prototype screenshot only)
+└── demo/                     # sahi_concept_demo.png (illustrative prototype screenshot only)
 ```
 
 ---
