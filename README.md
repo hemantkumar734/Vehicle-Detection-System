@@ -87,6 +87,22 @@ An end-to-end evaluation script that:
 
 **Enhancement impact:** Across evaluated rainy test images, the enhancement pipeline improved recovered detections in every evaluated case, with no observed regressions. Example: one test image went from 37 → 49 detected vehicles after enhancement (+12), another from 6 → 10 (+4) even in a low-yield scene.
 
+**Detection comparison (original vs. enhanced):**
+
+![Detection comparison](output/detection_comparison.png)
+
+**Detection efficacy per test image (original vs. enhanced counts):**
+
+![Detection efficacy comparison](output/detection_efficacy_comparison.png)
+
+**Systematic gain trend across test images:**
+
+![Gain trend analysis](output/gain_trend_analysis.png)
+
+**Vehicle class distribution across the evaluation set:**
+
+![Vehicle class distribution](output/vehicle_class_distribution.png)
+
 **Training/validation loss** converged smoothly across 120 epochs with no significant train-val divergence, indicating the model generalized well without overfitting.
 
 ![Training and validation curves](output/training_results.jpeg)
@@ -96,6 +112,16 @@ An end-to-end evaluation script that:
 ![Confusion matrix](output/confusion_matrix.jpeg)
 
 *(See `/output` folder for full-resolution versions of these images, plus `args.yaml` — the auto-generated Ultralytics training configuration log confirming the exact hyperparameters used for this run.)*
+
+---
+
+## 🔍 SAHI Tiled-Inference — Concept Illustration
+
+As noted above, the SAHI-based 4-quadrant tiled inference and IoM duplicate suppression described in the paper are not included as standalone code in this repository. The image below is a screenshot from an early prototype used to visually validate the concept — splitting a frame into 4 quadrants and running detection on each slice to recover small/distant vehicles that a single full-frame pass misses.
+
+![SAHI concept demonstration](demo/sahi_concept_demo.jpeg)
+
+*(Illustrative only — this demonstrates the concept was tested; the prototype's source code is not part of this repository.)*
 
 ---
 
@@ -120,7 +146,10 @@ Vehicle-Detection-System/
 ├── training.py               # YOLOv8x training configuration and script
 ├── requirements.txt          # Dependencies
 ├── test_images/              # Sample test images
-└── output/                   # training_results.jpeg, confusion_matrix.jpeg, args.yaml
+├── output/                   # training_results.jpeg, confusion_matrix.jpeg, args.yaml,
+│                              # detection_comparison.png, detection_efficacy_comparison.png,
+│                              # gain_trend_analysis.png, vehicle_class_distribution.png
+└── demo/                     # sahi_concept_demo.jpeg (illustrative prototype screenshot only)
 ```
 
 ---
